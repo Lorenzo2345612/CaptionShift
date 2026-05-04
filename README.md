@@ -1,26 +1,31 @@
 # CaptionShift
 
-Extensión de Chrome que traduce los subtítulos de cualquier reproductor de
-video **en sus propios nodos del DOM**, usando la **Chrome Translator API**
-nativa (on-device). Sin servidores, sin tracking.
+Extensión de Chrome que traduce los subtítulos de **Netflix** en tiempo
+real, reemplazando el texto **dentro de los mismos nodos del DOM del
+reproductor**, usando la **Chrome Translator API** nativa (on-device).
+Sin servidores, sin tracking.
+
+> ⚠️ **Soporte oficial: solo Netflix.**
+> El manifest restringe la inyección a `*.netflix.com`. Otros reproductores
+> (YouTube, Disney+, Prime Video, etc.) no están testeados y no se
+> ejecutará ahí.
 
 ---
 
 ## Cómo funciona
 
-1. Un `MutationObserver` vigila los contenedores de subtítulos (Netflix,
-   YouTube, Disney+, Prime Video, etc.).
-2. Al detectar texto nuevo, **vacía los text nodes al instante** para evitar
-   el flash del original.
-3. Junta el texto del bubble y lo traduce en una sola llamada con
+1. Un `MutationObserver` vigila los `.player-timedtext-text-container`
+   de Netflix.
+2. Al detectar texto nuevo, **vacía los text nodes al instante** para
+   evitar el flash del original mientras se traduce.
+3. Junta el texto del bubble y lo traduce en una sola llamada a
    `window.Translator` (mejor contexto).
-4. Reparte la traducción proporcionalmente entre los text nodes originales,
-   cortando en espacios. Los `<span>` anidados y los `<br>` quedan intactos —
-   la traducción se ve idéntica al subtítulo original (posición, fuente,
-   color, layout vertical).
+4. Reparte la traducción proporcionalmente entre los text nodes
+   originales, cortando en espacios. Los `<span>` anidados y los `<br>`
+   quedan intactos — la traducción se ve idéntica al subtítulo de
+   Netflix (posición, fuente, color, layout vertical).
 
-Resultado: el subtítulo no se duplica, no flota encima, no rompe estilos —
-es el mismo subtítulo del reproductor con el texto traducido.
+Resultado: el subtítulo no se duplica, no flota encima, no rompe estilos.
 
 ---
 
@@ -56,10 +61,10 @@ selecciona **Enabled BypassPerfRequirement** y reinicia Chrome.
 
 ## Uso
 
-1. Click en el ícono de la extensión.
-2. Elige idioma origen y destino.
-3. Activa el toggle. La primera vez puede descargar el modelo.
-4. Reproduce cualquier video con subtítulos.
+1. Abre Netflix y reproduce algo con subtítulos.
+2. Click en el ícono de CaptionShift.
+3. Elige idioma origen (el de los subs del video) y destino.
+4. Activa el toggle. La primera vez puede descargar el modelo.
 
 El toggle persiste entre sesiones — al reabrir Chrome o tras reboot, la
 extensión se reactiva sola en cada tab leyendo `chrome.storage.local`.
@@ -70,7 +75,7 @@ extensión se reactiva sola en cada tab leyendo `chrome.storage.local`.
 
 ```
 .
-├── manifest.json   # MV3, permisos: activeTab, storage
+├── manifest.json   # MV3, restringido a *.netflix.com
 ├── content.js      # Observer + reemplazo de text nodes + Translator API
 ├── background.js   # Service worker: sync de idiomas al cambiar de tab
 ├── popup.html      # UI: toggle + selectores de idioma + estado API
@@ -82,18 +87,25 @@ extensión se reactiva sola en cada tab leyendo `chrome.storage.local`.
 
 ## Detalles técnicos
 
-- **Detección**: selectores que cubren `.player-timedtext`, `.ytp-caption-segment`,
-  `.caption-window`, y patrones genéricos `[class*="subtitle|caption|timedtext"]`.
-  Se filtran a "leaf containers" para no procesar dos veces estructuras anidadas.
-- **Coalescing**: un `queueMicrotask` agrupa la ráfaga de mutaciones de una sola
-  creación de bubble en un único `processSubtitles()` (sin retardo perceptible).
-- **Anti-loop**: un `WeakMap` por text node guarda lo último que escribimos;
-  el observer dispara tras nuestros cambios y los ignora.
+- **Detección**: solo `.player-timedtext-text-container` (Netflix).
+- **Coalescing**: un `queueMicrotask` agrupa la ráfaga de mutaciones de
+  una sola creación de bubble en un único `processSubtitles()` (sin
+  retardo perceptible).
+- **Anti-loop**: un `WeakMap` por text node guarda lo último que
+  escribimos; el observer dispara tras nuestros cambios y los ignora.
 - **Anti-race**: si entre vaciar y escribir la traducción el reproductor
   rescribe el nodo, abortamos esa escritura.
 - **Caché**: `Map` LRU de 200 entradas para frases repetidas.
-- **Auto-init**: el content script lee `chrome.storage.local` al cargar y
-  se activa solo si `enabled === true`.
+- **Auto-init**: el content script lee `chrome.storage.local` al cargar
+  y se activa solo si `enabled === true` (sobrevive reboots).
+
+---
+
+## Roadmap
+
+- Soporte para otros reproductores (YouTube, Disney+, Prime Video) está
+  fuera del alcance actual. Si quieres aportar selectores y testearlos,
+  PRs bienvenidos.
 
 ---
 

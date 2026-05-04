@@ -1,11 +1,16 @@
 /**
- * content.js — Subtitle Translator (versión mínima)
+ * content.js — CaptionShift
  *
- * - Detecta los nodos de texto dentro de los contenedores de subtítulos.
+ * SOPORTE OFICIAL: Netflix únicamente.
+ * Otros reproductores (YouTube, Disney+, etc.) no están testeados — el
+ * manifest restringe la inyección a *.netflix.com.
+ *
+ * - Detecta los nodos de texto dentro de los contenedores de subtítulos
+ *   de Netflix (.player-timedtext-text-container).
  * - Los vacía al instante para evitar el flash del original.
  * - Traduce todo el texto del bubble en una sola llamada.
- * - Escribe la traducción en el primer nodo de texto, dejando intactos
- *   los <span> y <br> originales.
+ * - Reparte la traducción entre los text nodes originales preservando
+ *   los <span> y <br> (layout vertical intacto).
  */
 
 'use strict';
@@ -23,17 +28,9 @@ const state = {
 // o traducción) — así el observer no nos vuelve a disparar para lo mismo.
 const seen = new WeakMap();
 
+// Selectores específicos de Netflix.
 const SUBTITLE_SELECTORS = [
-  '.player-timedtext',
-  '.ytp-caption-segment',
-  '.caption-window',
-  '.subtitle__text',
-  '.atvwebplayersdk-captions-text',
-  '.default-text',
-  '.web-tv-app__subtitles',
-  '[class*="subtitle"]',
-  '[class*="caption"]',
-  '[class*="timedtext"]',
+  '.player-timedtext-text-container',
 ];
 
 // Devuelve los contenedores hoja (que no contienen a otro contenedor de subtítulo).
