@@ -1,133 +1,115 @@
-# 🌐 Subtitle Translator — Chrome AI Extension
+# CaptionShift
 
-Traduce subtítulos en tiempo real directamente en el navegador, usando la
-**Chrome Translator API** nativa (on-device). No envía ningún dato a servidores externos.
-
----
-
-## ✨ Características
-
-- **On-device & privado**: usa `window.Translator` (Chrome 138+), sin APIs externas
-- **Streaming con debounce**: traduce cada cambio de subtítulo con 250ms de debounce
-- **Caché inteligente**: frases repetidas no se re-traducen (caché LRU de 200 entradas)
-- **Multi-plataforma**: detecta subtítulos en Netflix, YouTube, Disney+, Prime Video, HBO Max, Apple TV+ y cualquier sitio con clases `subtitle`/`caption`/`timedtext`
-- **60+ idiomas** soportados vía BCP 47
-- **Overlay superpuesto**: muestra la traducción encima del player sin modificar el DOM original
+Extensión de Chrome que traduce los subtítulos de cualquier reproductor de
+video **en sus propios nodos del DOM**, usando la **Chrome Translator API**
+nativa (on-device). Sin servidores, sin tracking.
 
 ---
 
-## 🖥 Requisitos
+## Cómo funciona
+
+1. Un `MutationObserver` vigila los contenedores de subtítulos (Netflix,
+   YouTube, Disney+, Prime Video, etc.).
+2. Al detectar texto nuevo, **vacía los text nodes al instante** para evitar
+   el flash del original.
+3. Junta el texto del bubble y lo traduce en una sola llamada con
+   `window.Translator` (mejor contexto).
+4. Reparte la traducción proporcionalmente entre los text nodes originales,
+   cortando en espacios. Los `<span>` anidados y los `<br>` quedan intactos —
+   la traducción se ve idéntica al subtítulo original (posición, fuente,
+   color, layout vertical).
+
+Resultado: el subtítulo no se duplica, no flota encima, no rompe estilos —
+es el mismo subtítulo del reproductor con el texto traducido.
+
+---
+
+## Requisitos
 
 | Requisito | Mínimo |
 |-----------|--------|
-| Chrome versión | 138+ (desktop) |
-| Sistema operativo | Windows 10/11, macOS 13+, Linux |
-| Espacio libre | ~22 GB (para los modelos) |
+| Chrome | 138+ desktop |
+| OS | Windows 10/11, macOS 13+, Linux |
+| Espacio | ~22 GB para los modelos de idioma |
 | GPU VRAM | > 4 GB |
 
-> ⚠️ La Translator API **no funciona en mobile** (Chrome para Android/iOS).
+La Translator API no funciona en Chrome móvil.
 
 ---
 
-## 🚀 Instalación (modo desarrollador)
+## Instalación (modo desarrollador)
 
-1. Descarga o clona este repositorio
-2. Abre Chrome → `chrome://extensions/`
-3. Activa **"Modo desarrollador"** (toggle superior derecho)
-4. Haz clic en **"Cargar descomprimida"** y selecciona la carpeta `subtitle-translator/`
-5. La extensión aparece en la barra de herramientas
+1. Clona el repo.
+2. `chrome://extensions/` → activa **Modo desarrollador**.
+3. **Cargar descomprimida** → selecciona la carpeta del proyecto.
+4. La extensión aparece en la barra de herramientas.
 
-### Verificar que la API está activa
-
-Abre DevTools (F12) → Console y ejecuta:
+Verificar la API en DevTools:
 ```js
-console.log('Translator' in self); // debe ser true
+console.log('Translator' in self); // true
 ```
 
-Si es `false`, habilita la flag en:
-```
-chrome://flags/#optimization-guide-on-device-model
-```
-Selecciona **Enabled BypassPerfRequirement** y reinicia Chrome.
+Si es `false`, en `chrome://flags/#optimization-guide-on-device-model`
+selecciona **Enabled BypassPerfRequirement** y reinicia Chrome.
 
 ---
 
-## 📖 Uso
+## Uso
 
-1. Abre la extensión haciendo clic en su ícono 🌐
-2. Selecciona el **idioma origen** (el de los subtítulos del video) y el **idioma destino**
-3. Activa el toggle **"Traducir subtítulos"**
-4. La primera vez puede descargar el modelo de idioma (~segundos a minutos)
-5. Reproduce cualquier video con subtítulos — la traducción aparece superpuesta
+1. Click en el ícono de la extensión.
+2. Elige idioma origen y destino.
+3. Activa el toggle. La primera vez puede descargar el modelo.
+4. Reproduce cualquier video con subtítulos.
 
-### Intercambiar idiomas
-Usa el botón **⇄** para invertir origen/destino rápidamente.
+El toggle persiste entre sesiones — al reabrir Chrome o tras reboot, la
+extensión se reactiva sola en cada tab leyendo `chrome.storage.local`.
 
 ---
 
-## 🗂 Estructura del proyecto
+## Estructura
 
 ```
-subtitle-translator/
-├── manifest.json       # Configuración de la extensión (MV3)
-├── content.js          # Inyectado en páginas: detecta y traduce subtítulos
-├── background.js       # Service Worker: persiste estado entre tabs
-├── popup.html          # UI del popup
-├── popup.js            # Lógica del popup + check de disponibilidad
+.
+├── manifest.json   # MV3, permisos: activeTab, storage
+├── content.js      # Observer + reemplazo de text nodes + Translator API
+├── background.js   # Service worker: sync de idiomas al cambiar de tab
+├── popup.html      # UI: toggle + selectores de idioma + estado API
+├── popup.js
 └── icons/
-    ├── icon16.png
-    ├── icon48.png
-    └── icon128.png
 ```
 
 ---
 
-## 🔧 Cómo funciona
+## Detalles técnicos
 
-```
-[Página web]
-    │
-    ▼
-[MutationObserver]  ←── Detecta cambios en nodos de subtítulos
-    │
-    ▼
-[Translator API]    ←── window.Translator.create({ sourceLanguage, targetLanguage })
-    │                       (on-device, modelo descargado localmente)
-    ▼
-[Caché LRU]         ←── Evita re-traducir frases repetidas
-    │
-    ▼
-[Overlay DOM]       ←── Muestra la traducción encima del video
-```
+- **Detección**: selectores que cubren `.player-timedtext`, `.ytp-caption-segment`,
+  `.caption-window`, y patrones genéricos `[class*="subtitle|caption|timedtext"]`.
+  Se filtran a "leaf containers" para no procesar dos veces estructuras anidadas.
+- **Coalescing**: un `queueMicrotask` agrupa la ráfaga de mutaciones de una sola
+  creación de bubble en un único `processSubtitles()` (sin retardo perceptible).
+- **Anti-loop**: un `WeakMap` por text node guarda lo último que escribimos;
+  el observer dispara tras nuestros cambios y los ignora.
+- **Anti-race**: si entre vaciar y escribir la traducción el reproductor
+  rescribe el nodo, abortamos esa escritura.
+- **Caché**: `Map` LRU de 200 entradas para frases repetidas.
+- **Auto-init**: el content script lee `chrome.storage.local` al cargar y
+  se activa solo si `enabled === true`.
 
 ---
 
-## 🌍 API utilizada
+## API
 
-**`window.Translator`** — Chrome Built-in AI Translator API (Chrome 138+)  
-Docs: https://developer.chrome.com/docs/ai/translator-api  
-MDN: https://developer.mozilla.org/en-US/docs/Web/API/Translator
+[`window.Translator`](https://developer.chrome.com/docs/ai/translator-api) — Chrome 138+.
 
 ```js
-const translator = await Translator.create({
-  sourceLanguage: 'es',
-  targetLanguage: 'en',
-});
-const result = await translator.translate('Hola mundo');
-// → "Hello world"
+const t = await Translator.create({ sourceLanguage: 'es', targetLanguage: 'en' });
+await t.translate('Hola mundo'); // → "Hello world"
 ```
 
----
-
-## 📝 Notas
-
-- Los modelos se cachean en `chrome://on-device-translation-internals/`
-- No todos los pares de idiomas están disponibles; el popup indica el estado
-- En sitios con CSP estricto puede que el overlay no sea visible; en ese caso revisa la consola
+Modelos cacheados en `chrome://on-device-translation-internals/`.
 
 ---
 
 ## Licencia
 
 MIT
-# CaptionShift
